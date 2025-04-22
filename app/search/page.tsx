@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Card,
@@ -72,6 +72,11 @@ import {
 import { DefaultCompanyLogo } from "@/components/default-company-logo";
 import { ItemDetailFormatter } from "@/components/item-detail-formatter";
 
+interface LogoObject {
+  primary: string;
+  fallbacks: string[];
+}
+
 interface JobListing {
   id: string;
   title: string;
@@ -84,13 +89,13 @@ interface JobListing {
   experience_level: string;
   company_rating?: number;
   url: string;
-  logo?: string;
+  logo?: string | LogoObject;
   responsibilities?: string[];
   qualifications?: string[];
   benefits?: string[];
 }
 
-export default function SearchPage() {
+function SearchPageContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("query") || "";
   const isDesktop = useMediaQuery("(min-width: 1024px)");
@@ -108,7 +113,7 @@ export default function SearchPage() {
   const [filteredJobs, setFilteredJobs] = useState<JobListing[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [totalResults, setTotalResults] = useState(0); // Add this line
+  const [totalResults, setTotalResults] = useState(0);
   const [activeView, setActiveView] = useState("list");
   const [selectedJob, setSelectedJob] = useState<JobListing | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
@@ -123,10 +128,8 @@ export default function SearchPage() {
   const locationInputRef = useRef<HTMLInputElement>(null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
 
-  // Tetapkan konstanta ITEMS_PER_PAGE
   const ITEMS_PER_PAGE = 9;
 
-  // Close sidebar when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -144,7 +147,6 @@ export default function SearchPage() {
     };
   }, [showSidebar]);
 
-  // Handle scrolling when sidebar is open on mobile
   useEffect(() => {
     if (showSidebar && !isDesktop) {
       document.body.style.overflow = "hidden";
@@ -157,23 +159,19 @@ export default function SearchPage() {
     };
   }, [showSidebar, isDesktop]);
 
-  // Apply filters to jobs
   useEffect(() => {
     if (jobs.length === 0) return;
 
     let result = [...jobs];
 
-    // Apply job type filter
     if (jobType !== "all") {
       result = result.filter((job) => {
-        // Normalize both strings for comparison
         const normalizedJobType = job.job_type.toLowerCase().trim();
         const normalizedFilterType = jobType
           .replace("_", " ")
           .toLowerCase()
           .trim();
 
-        // Handle special case for full-time/full time variations
         if (
           normalizedFilterType === "full time" &&
           (normalizedJobType === "full-time" ||
@@ -182,7 +180,6 @@ export default function SearchPage() {
           return true;
         }
 
-        // Handle special case for part-time/part time variations
         if (
           normalizedFilterType === "part time" &&
           (normalizedJobType === "part-time" ||
@@ -198,13 +195,11 @@ export default function SearchPage() {
       });
     }
 
-    // Apply experience level filter - improved
     if (experience !== "all") {
       result = result.filter((job) => {
         const jobExp = job.experience_level.toLowerCase();
         const filterExp = experience.toLowerCase();
 
-        // Handle "Senior Level" vs "senior" etc.
         return (
           jobExp.includes(filterExp) ||
           (filterExp === "entry" && jobExp.includes("junior")) ||
@@ -214,7 +209,6 @@ export default function SearchPage() {
       });
     }
 
-    // Apply date posted filter - improved
     if (datePosted !== "all") {
       const now = new Date();
       result = result.filter((job) => {
@@ -246,32 +240,27 @@ export default function SearchPage() {
           if (postDate.includes("year")) {
             return false;
           }
-          return true; // Include all that are less than a year
+          return true;
         }
 
         return true;
       });
     }
 
-    // Apply salary filter
     if (salaryMin[0] > 0) {
       result = result.filter((job) => {
         const salaryText = job.salary;
-        // Extract numbers from salary string
         const numbers = salaryText.match(/\d+/g);
         if (!numbers) return false;
 
-        // Get the lowest number as minimum salary in K
         let minSalary = Math.min(...numbers.map((n) => parseInt(n)));
 
-        // Handle the case where salary might be shown without K but in thousands
         if (minSalary > 1000) minSalary = minSalary / 1000;
 
         return minSalary >= salaryMin[0];
       });
     }
 
-    // Apply remote only filter
     if (remoteOnly) {
       result = result.filter((job) =>
         job.location.toLowerCase().includes("remote")
@@ -283,17 +272,14 @@ export default function SearchPage() {
     setCurrentPage(1);
   }, [jobs, jobType, datePosted, experience, salaryMin, remoteOnly]);
 
-  // Fetch jobs from API (mock in this case)
   const fetchJobs = async (page = 1, newSearch = false) => {
     setIsLoading(true);
 
     try {
-      // Build the base query parameters
       const params = new URLSearchParams();
       params.append("q", query);
       if (location) params.append("location", location);
 
-      // If not a new search and we have a next page token, use it
       if (!newSearch && nextPageToken && page > 1) {
         params.append("page_token", nextPageToken);
       }
@@ -306,26 +292,19 @@ export default function SearchPage() {
 
       const data = await response.json();
 
-      // Check if we have an error from SerpAPI
       if (data.error) {
         console.warn("SerpAPI returned an error:", data.error);
 
-        // Fall back to mock data if SerpAPI returns an error
         const mockJobs = generateMockJobs(query, location, jobType);
 
         if (newSearch) {
           setJobs(mockJobs);
           setFilteredJobs(mockJobs);
-        } else {
-          // For pagination, just keep existing jobs
-          // In a real app, you might want different behavior
         }
 
-        // Set pagination with mock data
         setTotalResults(mockJobs.length);
         setTotalPages(Math.ceil(mockJobs.length / ITEMS_PER_PAGE));
 
-        // Show a toast to inform the user
         toast({
           title: "No results found",
           description:
@@ -337,15 +316,12 @@ export default function SearchPage() {
         return;
       }
 
-      // Store the next page token for future requests
       setNextPageToken(data.next_page_token);
 
-      // Update your job listings
       if (newSearch) {
         setJobs(data.jobs);
         setFilteredJobs(data.jobs);
       } else {
-        // Append jobs if paginating through results
         setJobs((prevJobs) => [...prevJobs, ...data.jobs]);
         setFilteredJobs((prevFilteredJobs) => [
           ...prevFilteredJobs,
@@ -353,13 +329,11 @@ export default function SearchPage() {
         ]);
       }
 
-      // Update pagination details
       setTotalResults(data.total_results);
       setTotalPages(Math.ceil(data.total_results / ITEMS_PER_PAGE));
     } catch (error) {
       console.error("Error fetching jobs:", error);
 
-      // Fall back to mock data on error
       const mockJobs = generateMockJobs(query, location, jobType);
 
       if (newSearch) {
@@ -387,12 +361,9 @@ export default function SearchPage() {
     }
   }, [initialQuery]);
 
-  // Add this useEffect to load dummy jobs on initial page load
   useEffect(() => {
     if (!initialQuery && jobs.length === 0 && !isLoading) {
-      // Load dummy jobs on first load if no search has been performed yet
       const dummyJobs = generateMockJobs("", "", "all");
-      // Pastikan kita memperlakukan hasilnya sebagai array
       const jobsArray = dummyJobs || [];
 
       setJobs(jobsArray);
@@ -401,7 +372,6 @@ export default function SearchPage() {
     }
   }, []);
 
-  // Add this useEffect to load recent searches
   useEffect(() => {
     setRecentSearches(getRecentSearches());
   }, []);
@@ -409,7 +379,6 @@ export default function SearchPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Prevent empty searches
     if (!query.trim()) {
       toast({
         title: "Search field is empty",
@@ -419,15 +388,12 @@ export default function SearchPage() {
       return;
     }
 
-    // Save to recent searches and update state
     const updatedSearches = saveRecentSearch(query.trim());
     setRecentSearches(updatedSearches);
 
-    // Reset pagination
     setCurrentPage(1);
     setNextPageToken(null);
 
-    // Perform a new search
     fetchJobs(1, true);
   };
 
@@ -467,7 +433,6 @@ export default function SearchPage() {
     setRemoteOnly(false);
   };
 
-  // Calculate if active filters are applied
   const hasActiveFilters =
     jobType !== "all" ||
     datePosted !== "all" ||
@@ -475,7 +440,6 @@ export default function SearchPage() {
     salaryMin[0] > 0 ||
     remoteOnly;
 
-  // Ubah cara memotong data untuk halaman saat ini
   const getCurrentPageJobs = () => {
     return filteredJobs.slice(
       (currentPage - 1) * ITEMS_PER_PAGE,
@@ -483,7 +447,6 @@ export default function SearchPage() {
     );
   };
 
-  // Update the UI to show different messaging for initial vs. searched jobs
   const resultsHeading = () => {
     if (isLoading) {
       return "Searching...";
@@ -545,7 +508,6 @@ export default function SearchPage() {
     suggestion: string
   ) => {
     if (type === "job") {
-      // Remove "(Company)" suffix if present
       const cleanSuggestion = suggestion.replace(/ \(Company\)$/, "");
       setQuery(cleanSuggestion);
       setShowJobSuggestions(false);
@@ -560,7 +522,6 @@ export default function SearchPage() {
     setRecentSearches(updatedSearches);
   };
 
-  // Add click outside listeners
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -583,13 +544,55 @@ export default function SearchPage() {
     };
   }, []);
 
-  // Tambahkan fungsi ini di dalam komponen SearchPage
   const handleLogoError = (jobId: string) => {
-    // console.log(`Logo error for job ID: ${jobId}`);
     setLogoErrors((prev) => ({
       ...prev,
       [jobId]: true,
     }));
+  };
+
+  const CompanyLogo = ({ job }: { job: JobListing }) => {
+    const [logoSrc, setLogoSrc] = useState<string | null>(null);
+    const [fallbackIndex, setFallbackIndex] = useState(0);
+    const [fallbacksExhausted, setFallbacksExhausted] = useState(false);
+
+    useEffect(() => {
+      if (typeof job.logo === "string") {
+        setLogoSrc(job.logo);
+      } else if (job.logo && typeof job.logo === "object" && job.logo.primary) {
+        setLogoSrc(job.logo.primary);
+      } else {
+        setFallbacksExhausted(true);
+      }
+    }, [job]);
+
+    const handleError = () => {
+      if (
+        typeof job.logo === "object" &&
+        job.logo?.fallbacks &&
+        fallbackIndex < job.logo.fallbacks.length
+      ) {
+        setLogoSrc(job.logo.fallbacks[fallbackIndex]);
+        setFallbackIndex((prev) => prev + 1);
+      } else {
+        setFallbacksExhausted(true);
+      }
+    };
+
+    if (fallbacksExhausted) {
+      return <DefaultCompanyLogo company={job.company} size="md" />;
+    }
+
+    return (
+      <div className="h-12 w-12 rounded-md bg-background overflow-hidden flex items-center justify-center">
+        <img
+          src={logoSrc || ""}
+          alt={job.company}
+          className="h-10 w-10 object-contain"
+          onError={handleError}
+        />
+      </div>
+    );
   };
 
   return (
@@ -649,7 +652,7 @@ export default function SearchPage() {
             <Button
               type="submit"
               className="w-full md:w-auto font-medium"
-              disabled={!query.trim()} // Disable when query is empty
+              disabled={!query.trim()}
             >
               {isLoading ? (
                 <>
@@ -838,18 +841,7 @@ export default function SearchPage() {
                   <CardHeader className="pb-2">
                     <div className="flex justify-between">
                       <div className="flex gap-4">
-                        {logoErrors[job.id] || !job.logo ? (
-                          <DefaultCompanyLogo company={job.company} size="md" />
-                        ) : (
-                          <div className="h-12 w-12 rounded-md bg-background overflow-hidden flex items-center justify-center">
-                            <img
-                              src={job.logo}
-                              alt={job.company}
-                              className="h-10 w-10 object-contain"
-                              onError={() => handleLogoError(job.id)}
-                            />
-                          </div>
-                        )}
+                        <CompanyLogo job={job} />
                         <div>
                           <CardTitle className="text-xl font-semibold hover:text-primary transition-colors line-clamp-1">
                             {job.title}
@@ -1014,18 +1006,7 @@ export default function SearchPage() {
                   >
                     <CardHeader className="pb-2 pt-4">
                       <div className="flex gap-3">
-                        {logoErrors[job.id] || !job.logo ? (
-                          <DefaultCompanyLogo company={job.company} size="sm" />
-                        ) : (
-                          <div className="h-10 w-10 rounded-md bg-background overflow-hidden flex items-center justify-center shrink-0">
-                            <img
-                              src={job.logo}
-                              alt={job.company}
-                              className="h-8 w-8 object-contain"
-                              onError={() => handleLogoError(job.id)}
-                            />
-                          </div>
-                        )}
+                        <CompanyLogo job={job} />
                         <div>
                           <CardTitle className="text-lg hover:text-primary transition-colors line-clamp-1">
                             {job.title}
@@ -1131,23 +1112,18 @@ export default function SearchPage() {
                 />
               </PaginationItem>
 
-              {/* Smart pagination logic */}
               {(() => {
                 let pagesToShow = [];
 
                 if (totalPages <= 7) {
-                  // If we have 7 or fewer pages, show all of them
                   pagesToShow = Array.from(
                     { length: totalPages },
                     (_, i) => i + 1
                   );
                 } else {
-                  // Otherwise show a smart subset with ellipsis
                   if (currentPage <= 3) {
-                    // Near the start: 1 2 3 4 5 ... N
                     pagesToShow = [1, 2, 3, 4, 5, "ellipsis", totalPages];
                   } else if (currentPage >= totalPages - 2) {
-                    // Near the end: 1 ... N-4 N-3 N-2 N-1 N
                     pagesToShow = [
                       1,
                       "ellipsis",
@@ -1158,7 +1134,6 @@ export default function SearchPage() {
                       totalPages,
                     ];
                   } else {
-                    // In the middle: 1 ... CP-1 CP CP+1 ... N
                     pagesToShow = [
                       1,
                       "ellipsis",
@@ -1213,7 +1188,6 @@ export default function SearchPage() {
         </>
       )}
 
-      {/* Sliding Sidebar for Job Details */}
       <div
         className={cn(
           "fixed inset-y-0 right-0 w-full md:w-[550px] lg:w-[650px] bg-background border-l shadow-xl transform transition-transform duration-300 z-50 overflow-y-auto",
@@ -1223,7 +1197,6 @@ export default function SearchPage() {
       >
         {selectedJob && (
           <div className="flex flex-col h-full">
-            {/* Header Section with Sticky Position */}
             <div className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 border-b pb-4 pt-6 px-6">
               <div className="flex justify-between items-start mb-6">
                 <h2 className="text-2xl font-bold tracking-tight">
@@ -1240,18 +1213,7 @@ export default function SearchPage() {
               </div>
 
               <div className="flex items-start gap-5">
-                {logoErrors[selectedJob.id] || !selectedJob.logo ? (
-                  <DefaultCompanyLogo company={selectedJob.company} size="lg" />
-                ) : (
-                  <div className="h-18 w-18 rounded-lg bg-muted/70 flex items-center justify-center overflow-hidden p-1 border">
-                    <img
-                      src={selectedJob.logo}
-                      alt={selectedJob.company}
-                      className="h-14 w-14 object-contain"
-                      onError={() => handleLogoError(selectedJob.id)}
-                    />
-                  </div>
-                )}
+                <CompanyLogo job={selectedJob} />
                 <div className="space-y-2 flex-1">
                   <h3 className="text-xl md:text-2xl font-semibold leading-tight">
                     {selectedJob.title}
@@ -1273,9 +1235,7 @@ export default function SearchPage() {
               </div>
             </div>
 
-            {/* Main Content (Scrollable) */}
             <div className="flex-1 overflow-auto px-6 py-6 divide-y divide-border">
-              {/* Job Metadata */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-6">
                 <div className="space-y-1.5">
                   <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -1315,7 +1275,6 @@ export default function SearchPage() {
                 </div>
               </div>
 
-              {/* Job Description */}
               <div className="py-6">
                 <h4 className="flex items-center gap-2 font-semibold text-lg mb-4">
                   <div className="h-6 w-1 bg-primary rounded-full"></div>
@@ -1327,7 +1286,6 @@ export default function SearchPage() {
                 />
               </div>
 
-              {/* Responsibilities Section */}
               {(selectedJob.responsibilities || []).length > 0 && (
                 <div className="py-6">
                   <h4 className="flex items-center gap-2 font-semibold text-lg mb-4">
@@ -1341,7 +1299,6 @@ export default function SearchPage() {
                 </div>
               )}
 
-              {/* Qualifications Section */}
               {(selectedJob.qualifications || []).length > 0 && (
                 <div className="py-6">
                   <h4 className="flex items-center gap-2 font-semibold text-lg mb-4">
@@ -1355,7 +1312,6 @@ export default function SearchPage() {
                 </div>
               )}
 
-              {/* Benefits Section */}
               {(selectedJob.benefits || []).length > 0 && (
                 <div className="py-6">
                   <h4 className="flex items-center gap-2 font-semibold text-lg mb-4">
@@ -1369,7 +1325,6 @@ export default function SearchPage() {
                 </div>
               )}
 
-              {/* Company Overview */}
               <div className="py-6">
                 <h4 className="flex items-center gap-2 font-semibold text-lg mb-4">
                   <div className="h-6 w-1 bg-primary rounded-full"></div>
@@ -1392,7 +1347,6 @@ export default function SearchPage() {
               </div>
             </div>
 
-            {/* Fixed Action Footer */}
             <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t p-6 flex flex-col sm:flex-row gap-3 z-10">
               <Button
                 className="sm:flex-1 bg-primary hover:bg-primary/90"
@@ -1422,7 +1376,6 @@ export default function SearchPage() {
         )}
       </div>
 
-      {/* Overlay for mobile view */}
       {showSidebar && !isDesktop && (
         <div
           className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
@@ -1433,7 +1386,14 @@ export default function SearchPage() {
   );
 }
 
-// Helper function to generate mock job listings
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <SearchPageContent />
+    </Suspense>
+  );
+}
+
 function generateMockJobs(
   query: string,
   location: string,
@@ -1475,7 +1435,6 @@ function generateMockJobs(
     },
   ];
 
-  // More targeted and realistic job titles for dummy data
   const featuredJobs = [
     {
       title: "Senior Software Engineer",
@@ -1609,11 +1568,8 @@ function generateMockJobs(
     },
   ];
 
-  // If this is for initial dummy data (no query), return featured jobs
   if (!query && !location && jobType === "all") {
-    // Map the featured jobs to the JobListing interface
     return featuredJobs.map((job, i) => {
-      // Standardize job type format based on the filter options
       const formatJobType = (type: string): string => {
         switch (type.toLowerCase()) {
           case "full-time":
@@ -1631,163 +1587,6 @@ function generateMockJobs(
         }
       };
 
-      // Perbaikan untuk processing responsibilities
-      // Fungsi pembersihan format bullet points yang lebih robust
-      const cleanBulletPoints = (
-        text: string | string[] | undefined
-      ): string[] => {
-        // Jika undefined atau null, kembalikan array kosong
-        if (!text) {
-          return [];
-        }
-
-        // Jika sudah array, pastikan semua elemen adalah string
-        if (Array.isArray(text)) {
-          return text.map((item) =>
-            typeof item === "string" ? item.trim() : String(item).trim()
-          );
-        }
-
-        // Jika string, coba deteksi format bullet points
-        const textStr = String(text);
-
-        // Deteksi bullet points (• atau * atau - atau angka diikuti titik) atau baris baru
-        if (textStr.match(/([•*-]|\d+\.)\s+/)) {
-          return textStr
-            .split(/(?:^|\n)(?:[•*-]|\d+\.)\s+/)
-            .filter((item) => item && item.trim().length > 0)
-            .map((item) => item.trim());
-        }
-
-        // Jika tidak ada bullet points yang terdeteksi, split berdasarkan newlines
-        if (textStr.includes("\n")) {
-          return textStr
-            .split(/\n+/)
-            .filter((item) => item && item.trim().length > 0)
-            .map((item) => item.trim());
-        }
-
-        // Jika masih tidak bisa di-split, kembalikan sebagai satu item
-        return [textStr.trim()];
-      };
-
-      // Fungsi untuk generate responsibilities default berdasarkan job title
-      const generateDefaultResponsibilities = (jobTitle: string): string[] => {
-        const title = jobTitle.toLowerCase();
-
-        // Beberapa template berdasarkan kategori pekerjaan
-        const responsibilities = {
-          developer: [
-            `Design and develop ${title} solutions`,
-            `Write clean, maintainable, and efficient code`,
-            `Collaborate with cross-functional teams on implementation`,
-            `Troubleshoot and debug applications`,
-            `Perform code reviews and mentor junior developers`,
-          ],
-          designer: [
-            `Create user-centered designs for ${title}`,
-            `Develop wireframes, prototypes and visual assets`,
-            `Collaborate with product and engineering teams`,
-            `Conduct usability testing and incorporate feedback`,
-            `Stay updated on design trends and best practices`,
-          ],
-          manager: [
-            `Lead and manage a team of professionals`,
-            `Oversee project planning, execution and delivery`,
-            `Develop strategies to enhance performance and efficiency`,
-            `Collaborate with stakeholders to define requirements`,
-            `Monitor progress and ensure targets are met`,
-          ],
-          data: [
-            `Analyze complex datasets to extract meaningful insights`,
-            `Develop and implement data models and algorithms`,
-            `Create visualizations to communicate findings`,
-            `Collaborate with teams to implement data-driven solutions`,
-            `Stay updated on latest data science techniques`,
-          ],
-          default: [
-            `Contribute to the success of the ${title} role`,
-            `Collaborate with team members to achieve objectives`,
-            `Implement best practices and methodologies`,
-            `Prepare reports and documentation as needed`,
-            `Stay updated on industry trends and developments`,
-          ],
-        };
-
-        // Pilih kategori yang sesuai berdasarkan job title
-        if (
-          title.includes("develop") ||
-          title.includes("engineer") ||
-          title.includes("program")
-        ) {
-          return responsibilities.developer;
-        }
-        if (
-          title.includes("design") ||
-          title.includes("ui") ||
-          title.includes("ux")
-        ) {
-          return responsibilities.designer;
-        }
-        if (
-          title.includes("manager") ||
-          title.includes("lead") ||
-          title.includes("director")
-        ) {
-          return responsibilities.manager;
-        }
-        if (
-          title.includes("data") ||
-          title.includes("analyst") ||
-          title.includes("scientist")
-        ) {
-          return responsibilities.data;
-        }
-
-        return responsibilities.default;
-      };
-
-      // Gunakan dalam kode utama:
-      const processResponsibilities = (job: any): string[] => {
-        try {
-          // Jika responsibilities sudah ada dalam format string
-          if (typeof job.responsibilities === "string") {
-            return cleanBulletPoints(job.responsibilities);
-          }
-
-          // Jika responsibilities sudah ada dalam format array tapi perlu dibersihkan
-          if (Array.isArray(job.responsibilities)) {
-            // Filter array untuk menghilangkan nilai null, undefined, atau string kosong
-            const filtered = job.responsibilities
-              .filter(
-                (item) =>
-                  item !== null &&
-                  item !== undefined &&
-                  String(item).trim() !== ""
-              )
-              .map((item) =>
-                typeof item === "string" ? item.trim() : String(item).trim()
-              );
-
-            // Jika array tidak kosong setelah filtering, kembalikan
-            if (filtered.length > 0) {
-              return filtered;
-            }
-          }
-
-          // Jika tidak ada responsibilities yang valid, generate default
-          return generateDefaultResponsibilities(job.title);
-        } catch (error) {
-          // console.error("Error processing job responsibilities:", error);
-          // Fallback ke responsibilities default jika terjadi error
-          return generateDefaultResponsibilities(job.title);
-        }
-      };
-
-      // Ganti kode yang error dengan ini
-      const jobResponsibilities = processResponsibilities(job);
-
-      // Dan gunakan jobResponsibilities di tempat job.responsibilities
       return {
         id: `featured-job-${i + 1}`,
         title: job.title,
@@ -1801,19 +1600,12 @@ function generateMockJobs(
         company_rating: job.rating,
         url: "#",
         logo: job.logo,
-        responsibilities: jobResponsibilities,
-        qualifications: job.qualifications || [],
-        benefits: job.benefits || [],
+        responsibilities: [],
+        qualifications: [],
+        benefits: [],
       };
     });
   }
 
-  // For search results
-  // Add code for search results here
-
-  // Ganti dengan array kosong, bukan undefined
   return [];
-}
-function setTotalResults(total_results: any) {
-  throw new Error("Function not implemented.");
 }

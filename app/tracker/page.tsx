@@ -403,7 +403,9 @@ export default function TrackerPage() {
   };
 
   // Get badge color based on status
-  const getStatusBadgeVariant = (status: string) => {
+  const getStatusBadgeVariant = (
+    status: string
+  ): "secondary" | "destructive" | "default" | "outline" => {
     switch (status) {
       case "Saved":
         return "outline";
@@ -412,7 +414,9 @@ export default function TrackerPage() {
       case "Interviewed":
         return "default";
       case "Offered":
-        return "success";
+        // Temporarily map 'success' to 'default' due to type mismatch
+        // TODO: Update Badge component variants in components/ui/badge.tsx to include 'success'
+        return "default";
       case "Rejected":
         return "destructive";
       default:
@@ -1081,9 +1085,7 @@ export default function TrackerPage() {
                                         : "bg-red-400"
                                     }`}
                                   />
-                                  <Badge
-                                    variant={getStatusBadgeVariant(job.status)}
-                                  >
+                                  <Badge variant={getStatusBadgeVariant(job.status)}>
                                     {job.status}
                                   </Badge>
                                 </div>

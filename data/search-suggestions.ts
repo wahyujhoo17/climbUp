@@ -210,16 +210,18 @@ export function removeRecentSearch(search: string): string[] {
   }
 }
 
-// Update the handleLocationInputChange function
-const handleLocationInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const value = e.target.value;
-  setLocation(value);
-  
-  if (value.length >= 2) {
-    setLocationSuggestions(getLocationSuggestions(value));
-    setShowLocationSuggestions(true);
-  } else {
-    setLocationSuggestions([]);
-    setShowLocationSuggestions(false);
-  }
-};
+// Removed the handleLocationInputChange function as it belongs in a React component
+// const handleLocationInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+//   const value = e.target.value;
+//   // setLocation(value); // Removed this line causing the error
+//
+//   if (value.length >= 2) {
+//     setLocationSuggestions(getLocationSuggestions(value));
+//     setShowLocationSuggestions(true);
+//   } else {
+//     setLocationSuggestions([]);
+//     setShowLocationSuggestions(false);
+//   }
+// };
+
+// Make sure there's no other code below this point if this was the end of the file.
